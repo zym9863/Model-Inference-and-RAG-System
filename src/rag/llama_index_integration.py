@@ -86,26 +86,50 @@ class LlamaIndexRAG:
                 trust_remote_code=True
             )
             
-            # 设置语言模型（可选，用于生成）
+            # 设置语言模型（用于生成）
             logger.info(f"正在设置语言模型: {self.llm_model_name}")
-            self.llm = HuggingFaceLLM(
-                model_name=self.llm_model_name,
-                tokenizer_name=self.llm_model_name,
-                context_window=2048,
-                max_new_tokens=512,
-                generate_kwargs={
-                    "temperature": 0.7,
-                    "top_p": 0.9,
-                    "do_sample": True
-                },
-                model_kwargs={
-                    "torch_dtype": "float16",
-                    "load_in_4bit": True
-                },
-                tokenizer_kwargs={
-                    "trust_remote_code": True
-                }
-            )
+            try:
+                self.llm = HuggingFaceLLM(
+                    model_name=self.llm_model_name,
+                    tokenizer_name=self.llm_model_name,
+                    context_window=2048,
+                    max_new_tokens=512,
+                    generate_kwargs={
+                        "temperature": 0.7,
+                        "top_p": 0.9,
+                        "do_sample": True,
+                        "pad_token_id": None  # 让模型自己处理
+                    },
+                    model_kwargs={
+                        "torch_dtype": "float16",
+                        "device_map": "auto",
+                        "trust_remote_code": True,
+                        "quantization_config": {
+                            "load_in_4bit": True,
+                            "bnb_4bit_compute_dtype": "float16",
+                            "bnb_4bit_use_double_quant": True,
+                            "bnb_4bit_quant_type": "nf4"
+                        }
+                    },
+                    tokenizer_kwargs={
+                        "trust_remote_code": True,
+                        "padding_side": "left"  # 对于生成任务使用左填充
+                    },
+                    device_map="auto",
+                    stopping_ids=[]
+                )
+                logger.info("HuggingFaceLLM 初始化成功")
+            except Exception as e:
+                logger.warning(f"HuggingFaceLLM 初始化失败: {e}")
+                logger.info("将使用默认LLM配置")
+                # 如果HuggingFaceLLM初始化失败，使用更简单的配置
+                try:
+                    from llama_index.llms.openai import OpenAI
+                    self.llm = OpenAI(model="gpt-3.5-turbo", temperature=0.7)
+                    logger.info("使用OpenAI替代模型")
+                except ImportError:
+                    logger.warning("无法导入OpenAI模型，将使用None")
+                    self.llm = None
             
             # 设置全局配置
             Settings.embed_model = self.embed_model
@@ -270,7 +294,8 @@ class LlamaIndexRAG:
         self, 
         query_text: str, 
         similarity_top_k: Optional[int] = None,
-        response_mode: str = "compact"
+        response_mode: str = "compact",
+        fallback_to_custom_llm: bool = True
     ) -> Dict[str, Any]:
         """
         执行RAG查询
@@ -279,6 +304,7 @@ class LlamaIndexRAG:
             query_text: 查询文本
             similarity_top_k: 检索的相似文档数量
             response_mode: 响应模式
+            fallback_to_custom_llm: 是否在LlamaIndex查询失败时回退到自定义LLM
             
         Returns:
             查询结果字典
@@ -304,31 +330,120 @@ class LlamaIndexRAG:
                 )
             
             # 执行查询
+            logger.info(f"正在执行RAG查询: {query_text}")
             response = self.query_engine.query(query_text)
+            
+            # 调试日志：输出响应对象的信息
+            logger.debug(f"查询响应对象类型: {type(response)}")
+            logger.debug(f"响应对象属性: {dir(response)}")
+            if hasattr(response, '__dict__'):
+                logger.debug(f"响应对象详细信息: {response.__dict__}")
             
             # 提取源节点信息
             source_nodes = []
             if hasattr(response, 'source_nodes'):
+                logger.info(f"找到 {len(response.source_nodes)} 个源节点")
                 for node in response.source_nodes:
                     source_nodes.append({
                         "text": node.text,
                         "score": getattr(node, 'score', None),
                         "metadata": node.metadata
                     })
+            else:
+                logger.warning("响应对象没有 source_nodes 属性")
+            
+            # 提取响应文本，处理不同类型的响应对象
+            response_text = ""
+            logger.debug("正在提取响应文本...")
+            
+            if hasattr(response, 'response'):
+                response_text = response.response
+                logger.debug(f"使用 response.response: '{response_text}'")
+            elif hasattr(response, 'text'):
+                response_text = response.text
+                logger.debug(f"使用 response.text: '{response_text}'")
+            elif hasattr(response, 'content'):
+                response_text = response.content
+                logger.debug(f"使用 response.content: '{response_text}'")
+            else:
+                response_text = str(response)
+                logger.debug(f"使用 str(response): '{response_text}'")
+            
+            # 如果响应为空且启用了回退模式，使用自定义LLM生成响应
+            if (not response_text.strip() or response_text.strip().lower() in ["empty response", ""]) and fallback_to_custom_llm:
+                logger.warning("LlamaIndex响应为空，尝试使用自定义LLM生成响应")
+                response_text = self._generate_response_with_custom_llm(query_text, source_nodes)
+            
+            # 确保响应不为空
+            if not response_text.strip():
+                logger.warning(f"响应文本为空，原始响应对象: {response}")
+                response_text = "抱歉，无法生成有效的回答。请检查系统配置或尝试其他查询。"
             
             result = {
                 "query": query_text,
-                "response": str(response),
+                "response": response_text,
                 "source_nodes": source_nodes,
                 "num_sources": len(source_nodes)
             }
             
-            logger.info(f"查询完成，返回 {len(source_nodes)} 个源节点")
+            logger.info(f"查询完成，返回 {len(source_nodes)} 个源节点，响应长度: {len(response_text)}")
             return result
             
         except Exception as e:
             logger.error(f"查询失败: {e}")
             raise
+    
+    def _generate_response_with_custom_llm(self, query_text: str, source_nodes: List[Dict]) -> str:
+        """
+        使用自定义LLM生成响应（回退方案）
+        
+        Args:
+            query_text: 查询文本
+            source_nodes: 源节点列表
+            
+        Returns:
+            生成的响应文本
+        """
+        try:
+            # 导入自定义的Qwen3模型
+            from ..models.qwen3_model import Qwen3Model
+            
+            # 初始化Qwen3模型
+            logger.info("初始化自定义Qwen3模型作为回退方案")
+            custom_llm = Qwen3Model(
+                model_name=self.llm_model_name,
+                device="auto"
+            )
+            
+            # 构建上下文
+            context_parts = []
+            for i, node in enumerate(source_nodes[:3]):  # 只使用前3个最相关的文档
+                context_parts.append(f"参考文档 {i+1}：{node['text']}")
+            
+            context = "\n\n".join(context_parts) if context_parts else "没有找到相关文档。"
+            
+            # 构建提示
+            prompt = f"""基于以下提供的文档内容，请回答用户的问题。如果文档中没有相关信息，请说明无法从提供的文档中找到答案。
+
+{context}
+
+用户问题：{query_text}
+
+请基于上述文档内容回答："""
+            
+            # 生成响应
+            response = custom_llm.generate_text(
+                prompt=prompt,
+                max_new_tokens=256,
+                temperature=0.7
+            )
+            
+            logger.info("使用自定义LLM成功生成响应")
+            return response
+            
+        except Exception as e:
+            logger.error(f"自定义LLM回退方案失败: {e}")
+            return f"基于检索到的相关文档，无法生成完整回答。请参考源文档内容。检索到 {len(source_nodes)} 个相关文档片段。"
     
     def get_index_info(self) -> Dict[str, Any]:
         """

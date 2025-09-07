@@ -34,7 +34,7 @@ generation:
 
 # 日志配置
 logging:
-  level: "INFO"                                # 日志级别: DEBUG, INFO, WARNING, ERROR
+  level: "DEBUG"                               # 日志级别: DEBUG, INFO, WARNING, ERROR
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   file_path: "./logs/rag_system.log"           # 日志文件路径
   max_file_size: "10MB"                        # 最大文件大小
