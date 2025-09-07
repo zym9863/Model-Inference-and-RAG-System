@@ -1,5 +1,7 @@
 # Qwen3-8B 4bit推理与小上下文RAG系统
 
+[English](./README-EN.md) | 中文
+
 基于Qwen/Qwen3-8B模型的4bit量化推理系统，集成ChromaDB向量数据库和LlamaIndex框架，实现高效的检索增强生成(RAG)。
 
 ## 技术栈
