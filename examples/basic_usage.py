@@ -5,10 +5,15 @@
 """
 
 import sys
+import os
 from pathlib import Path
 
-# 添加src目录到Python路径
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# 获取项目根目录并添加到Python路径
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+# 确保工作目录是项目根目录
+os.chdir(project_root)
 
 from src.rag.query_processor import RAGQueryProcessor
 from src.utils.logger import setup_logger
