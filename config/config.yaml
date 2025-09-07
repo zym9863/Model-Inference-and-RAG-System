@@ -1,0 +1,41 @@
+# RAG系统配置文件
+
+# 模型配置
+model:
+  llm_model_name: "Qwen/Qwen2.5-7B-Instruct"  # 语言模型名称
+  embedding_model_name: "google/gemma-2b"      # 嵌入模型名称
+  device: "auto"                               # 设备类型: auto, cuda, cpu
+  cache_dir: null                              # 模型缓存目录
+  max_memory: null                             # 最大内存限制
+
+# 向量数据库配置
+vectordb:
+  persist_directory: "./data/chromadb"         # 持久化目录
+  collection_name: "rag_documents"             # 集合名称
+  embedding_function: null                     # 嵌入函数
+
+# RAG系统配置
+rag:
+  use_llama_index: true                        # 是否使用LlamaIndex框架
+  max_context_length: 1500                     # 最大上下文长度
+  top_k_retrieval: 5                           # 检索文档数量
+  similarity_threshold: 0.7                    # 相似度阈值
+  chunk_size: 512                              # 文档分块大小
+  chunk_overlap: 50                            # 分块重叠大小
+
+# 文本生成配置
+generation:
+  max_new_tokens: 512                          # 最大生成token数
+  temperature: 0.7                             # 温度参数
+  top_p: 0.9                                   # top-p采样
+  top_k: 50                                    # top-k采样
+  repetition_penalty: 1.1                      # 重复惩罚
+  do_sample: true                              # 是否采样
+
+# 日志配置
+logging:
+  level: "INFO"                                # 日志级别: DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: "./logs/rag_system.log"           # 日志文件路径
+  max_file_size: "10MB"                        # 最大文件大小
+  backup_count: 5                              # 备份文件数量
