@@ -25,8 +25,8 @@ def main():
         # 1. 初始化RAG系统
         print("1. 初始化RAG系统...")
         rag_processor = RAGQueryProcessor(
-            llm_model_name="Qwen/Qwen2.5-7B-Instruct",
-            embedding_model_name="google/gemma-2b",
+            llm_model_name="Qwen/Qwen3-8B",
+            embedding_model_name="google/embeddinggemma-300m",
             use_llama_index=True,
             max_context_length=1000,
             top_k_retrieval=3

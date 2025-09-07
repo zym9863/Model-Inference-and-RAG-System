@@ -24,7 +24,7 @@ class EmbeddingService:
     
     def __init__(
         self,
-        model_name: str = "google/gemma-2b",  # 使用可用的Gemma模型
+        model_name: str = "google/embeddinggemma-300m",  # 使用可用的Gemma模型
         device: str = "auto",
         cache_dir: Optional[str] = None,
         max_length: int = 512,

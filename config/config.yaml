@@ -2,8 +2,8 @@
 
 # 模型配置
 model:
-  llm_model_name: "Qwen/Qwen2.5-7B-Instruct"  # 语言模型名称
-  embedding_model_name: "google/gemma-2b"      # 嵌入模型名称
+  llm_model_name: "Qwen/Qwen3-8B"  # 语言模型名称
+  embedding_model_name: "google/embeddinggemma-300m"      # 嵌入模型名称
   device: "auto"                               # 设备类型: auto, cuda, cpu
   cache_dir: null                              # 模型缓存目录
   max_memory: null                             # 最大内存限制

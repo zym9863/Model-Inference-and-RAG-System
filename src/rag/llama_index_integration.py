@@ -36,8 +36,8 @@ class LlamaIndexRAG:
     
     def __init__(
         self,
-        embedding_model_name: str = "google/gemma-2b",
-        llm_model_name: str = "Qwen/Qwen2.5-7B-Instruct",
+        embedding_model_name: str = "google/embeddinggemma-300m",
+        llm_model_name: str = "Qwen/Qwen3-8B",
         chroma_persist_dir: str = "./data/chromadb",
         collection_name: str = "rag_documents",
         chunk_size: int = 512,

@@ -26,7 +26,7 @@ class TestEmbeddingService(unittest.TestCase):
     def setUp(self):
         """测试前设置"""
         self.embedding_service = EmbeddingService(
-            model_name="google/gemma-2b",
+            model_name="google/embeddinggemma-300m",
             device="cpu"  # 使用CPU避免GPU依赖
         )
     
@@ -128,8 +128,8 @@ class TestRAGQueryProcessor(unittest.TestCase):
         
         # 使用较小的配置进行测试
         self.rag_processor = RAGQueryProcessor(
-            llm_model_name="Qwen/Qwen2.5-7B-Instruct",
-            embedding_model_name="google/gemma-2b",
+            llm_model_name="Qwen/Qwen3-8B",
+            embedding_model_name="google/embeddinggemma-300m",
             chroma_persist_dir=self.temp_dir,
             use_llama_index=False,  # 使用自定义组件便于测试
             max_context_length=500,

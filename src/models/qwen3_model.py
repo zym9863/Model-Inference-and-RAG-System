@@ -27,7 +27,7 @@ class Qwen3Model:
     
     def __init__(
         self, 
-        model_name: str = "Qwen/Qwen2.5-7B-Instruct",  # 使用可用的Qwen模型
+        model_name: str = "Qwen/Qwen3-8B",  # 使用可用的Qwen模型
         device: str = "auto",
         max_memory: Optional[Dict[str, str]] = None,
         cache_dir: Optional[str] = None

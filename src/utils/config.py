@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ModelConfig:
     """模型配置"""
-    llm_model_name: str = "Qwen/Qwen2.5-7B-Instruct"
-    embedding_model_name: str = "google/gemma-2b"
+    llm_model_name: str = "Qwen/Qwen3-8B"
+    embedding_model_name: str = "google/embeddinggemma-300m"
     device: str = "auto"
     cache_dir: Optional[str] = None
     max_memory: Optional[Dict[str, str]] = None
