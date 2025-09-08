@@ -72,13 +72,6 @@ class RAGQueryProcessor:
         try:
             logger.info("正在初始化RAG系统组件...")
             
-            # 初始化语言模型
-            logger.info("初始化语言模型...")
-            self.llm = Qwen3Model(
-                model_name=self.llm_model_name,
-                device="auto"
-            )
-            
             if self.use_llama_index:
                 # 使用LlamaIndex框架
                 logger.info("初始化LlamaIndex RAG框架...")
@@ -91,6 +84,12 @@ class RAGQueryProcessor:
                 )
             else:
                 # 使用自定义组件
+                # 仅在自定义管线时加载本地LLM，避免重复占用显存
+                logger.info("初始化语言模型...")
+                self.llm = Qwen3Model(
+                    model_name=self.llm_model_name,
+                    device="auto"
+                )
                 logger.info("初始化嵌入服务...")
                 self.embedding_service = EmbeddingService(
                     model_name=self.embedding_model_name,

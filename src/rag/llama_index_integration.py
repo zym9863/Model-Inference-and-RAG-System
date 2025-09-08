@@ -23,6 +23,8 @@ import chromadb
 from typing import List, Dict, Any, Optional, Union
 import logging
 from pathlib import Path
+import torch
+from transformers import BitsAndBytesConfig
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +44,7 @@ class LlamaIndexRAG:
         collection_name: str = "rag_documents",
         chunk_size: int = 512,
         chunk_overlap: int = 50,
-        similarity_threshold: float = 0.7
+        similarity_threshold: float = 0.3,
     ):
         """
         初始化LlamaIndex RAG系统
@@ -56,6 +58,7 @@ class LlamaIndexRAG:
             chunk_overlap: 分块重叠大小
             similarity_threshold: 相似度阈值
         """
+        # 保存配置
         self.embedding_model_name = embedding_model_name
         self.llm_model_name = llm_model_name
         self.chroma_persist_dir = Path(chroma_persist_dir)
@@ -63,13 +66,16 @@ class LlamaIndexRAG:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.similarity_threshold = similarity_threshold
-        
-        self.embed_model = None
-        self.llm = None
-        self.vector_store = None
-        self.index = None
-        self.query_engine = None
-        
+
+        # 运行时对象
+        self.embed_model: Optional[HuggingFaceEmbedding] = None
+        self.llm: Optional[HuggingFaceLLM] = None
+        self.vector_store: Optional[ChromaVectorStore] = None
+        self.index: Optional[VectorStoreIndex] = None
+        self.query_engine: Optional[RetrieverQueryEngine] = None
+        self._custom_llm = None  # 回退LLM缓存，避免重复加载
+
+        # 初始化组件
         self._setup_models()
         self._setup_vector_store()
         self._setup_index()
@@ -89,6 +95,14 @@ class LlamaIndexRAG:
             # 设置语言模型（用于生成）
             logger.info(f"正在设置语言模型: {self.llm_model_name}")
             try:
+                # 使用4bit量化与自动设备放置；避免重复传递 device_map
+                quant_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                )
+
                 self.llm = HuggingFaceLLM(
                     model_name=self.llm_model_name,
                     tokenizer_name=self.llm_model_name,
@@ -98,25 +112,19 @@ class LlamaIndexRAG:
                         "temperature": 0.7,
                         "top_p": 0.9,
                         "do_sample": True,
-                        "pad_token_id": None  # 让模型自己处理
+                        # 让模型自己处理pad_token
                     },
                     model_kwargs={
-                        "torch_dtype": "float16",
+                        "torch_dtype": torch.float16,
                         "device_map": "auto",
                         "trust_remote_code": True,
-                        "quantization_config": {
-                            "load_in_4bit": True,
-                            "bnb_4bit_compute_dtype": "float16",
-                            "bnb_4bit_use_double_quant": True,
-                            "bnb_4bit_quant_type": "nf4"
-                        }
+                        "quantization_config": quant_config,
                     },
                     tokenizer_kwargs={
                         "trust_remote_code": True,
-                        "padding_side": "left"  # 对于生成任务使用左填充
+                        "padding_side": "left",
                     },
-                    device_map="auto",
-                    stopping_ids=[]
+                    stopping_ids=[],
                 )
                 logger.info("HuggingFaceLLM 初始化成功")
             except Exception as e:
@@ -351,6 +359,31 @@ class LlamaIndexRAG:
                     })
             else:
                 logger.warning("响应对象没有 source_nodes 属性")
+
+            # 如果未命中任何节点，尝试降低阈值进行一次轻量级重试以获取上下文
+            if not source_nodes:
+                try:
+                    logger.info("未检索到源节点，进行一次降阈值重试以获取上下文")
+                    retry_retriever = VectorIndexRetriever(
+                        index=self.index,
+                        similarity_top_k=similarity_top_k or 5,
+                    )
+                    retrieved_nodes = retry_retriever.retrieve(query_text)
+                    lowered_cutoff = min(self.similarity_threshold, 0.3)
+                    tmp_nodes = []
+                    for n in retrieved_nodes:
+                        score = getattr(n, 'score', None)
+                        if score is None or score >= lowered_cutoff:
+                            tmp_nodes.append({
+                                "text": n.get_text() if hasattr(n, 'get_text') else getattr(n, 'text', ""),
+                                "score": score,
+                                "metadata": getattr(n, 'metadata', {})
+                            })
+                    if tmp_nodes:
+                        source_nodes = tmp_nodes
+                        logger.info(f"降阈值重试获取到 {len(source_nodes)} 个候选节点用于回退生成")
+                except Exception as _:
+                    logger.debug("降阈值检索重试失败或不适用，跳过")
             
             # 提取响应文本，处理不同类型的响应对象
             response_text = ""
@@ -405,15 +438,14 @@ class LlamaIndexRAG:
             生成的响应文本
         """
         try:
-            # 导入自定义的Qwen3模型
-            from ..models.qwen3_model import Qwen3Model
-            
-            # 初始化Qwen3模型
-            logger.info("初始化自定义Qwen3模型作为回退方案")
-            custom_llm = Qwen3Model(
-                model_name=self.llm_model_name,
-                device="auto"
-            )
+            # 延迟初始化并缓存自定义Qwen3模型，避免每次查询重复加载
+            if self._custom_llm is None:
+                from ..models.qwen3_model import Qwen3Model
+                logger.info("初始化自定义Qwen3模型作为回退方案（首次加载）")
+                self._custom_llm = Qwen3Model(
+                    model_name=self.llm_model_name,
+                    device="auto"
+                )
             
             # 构建上下文
             context_parts = []
@@ -432,7 +464,7 @@ class LlamaIndexRAG:
 请基于上述文档内容回答："""
             
             # 生成响应
-            response = custom_llm.generate_text(
+            response = self._custom_llm.generate_text(
                 prompt=prompt,
                 max_new_tokens=256,
                 temperature=0.7
