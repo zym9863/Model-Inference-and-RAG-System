@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional, Union, Callable, Type
 from enum import Enum
 from dataclasses import dataclass
 import time
+import torch
 
 logger = logging.getLogger(__name__)
 

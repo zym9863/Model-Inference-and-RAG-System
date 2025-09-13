@@ -43,8 +43,8 @@ class RAGQueryProcessor:
     
     def __init__(
         self,
-        llm_model_name: str,
-        embedding_model_name: str,
+        llm_model_name: Optional[str] = None,
+        embedding_model_name: Optional[str] = None,
         chroma_persist_dir: str = "./data/chromadb",
         collection_name: str = "rag_documents",
         use_llama_index: bool = True,
@@ -57,8 +57,8 @@ class RAGQueryProcessor:
         初始化RAG查询处理器
 
         Args:
-            llm_model_name: 语言模型名称
-            embedding_model_name: 嵌入模型名称
+            llm_model_name: 语言模型名称（可选，未提供则从配置加载）
+            embedding_model_name: 嵌入模型名称（可选，未提供则从配置加载）
             chroma_persist_dir: ChromaDB持久化目录
             collection_name: 集合名称
             use_llama_index: 是否使用LlamaIndex框架
@@ -67,6 +67,19 @@ class RAGQueryProcessor:
             similarity_threshold: 相似度阈值
             security_config: 安全配置字典
         """
+        # 从配置加载默认值（仅在未显式提供时）
+        try:
+            from ..utils.config import Config
+            cfg = Config()
+            cfg.apply_env_overrides()
+            if llm_model_name is None:
+                llm_model_name = cfg.model.llm_model_name
+            if embedding_model_name is None:
+                embedding_model_name = cfg.model.embedding_model_name
+        except Exception:
+            # 配置加载失败则保持传入值（可能为空，后续初始化会报错，便于发现问题）
+            pass
+
         self.llm_model_name = llm_model_name
         self.embedding_model_name = embedding_model_name
         self.chroma_persist_dir = chroma_persist_dir
