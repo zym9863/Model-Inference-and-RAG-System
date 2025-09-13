@@ -7,7 +7,7 @@
 import yaml
 import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import logging
 from dataclasses import dataclass, asdict
 
@@ -55,6 +55,44 @@ class GenerationConfig:
 
 
 @dataclass
+class SecurityConfig:
+    """安全配置"""
+    enable_authentication: bool = False
+    enable_input_validation: bool = True
+    enable_access_control: bool = False
+    jwt_secret_key: Optional[str] = None
+    jwt_algorithm: str = "HS256"
+    token_expiry_minutes: int = 60
+    refresh_token_expiry_days: int = 7
+    max_query_length: int = 10000
+    max_filename_length: int = 255
+    max_path_length: int = 1000
+    max_batch_size: int = 100
+    allowed_file_extensions: List[str] = None
+    rate_limit_per_minute: int = 60
+    enable_security_headers: bool = True
+
+    def __post_init__(self):
+        if self.allowed_file_extensions is None:
+            self.allowed_file_extensions = [
+                '.txt', '.md', '.pdf', '.doc', '.docx',
+                '.xls', '.xlsx', '.ppt', '.pptx', '.json',
+                '.csv', '.html', '.xml', '.rtf'
+            ]
+
+
+@dataclass
+class ResourceConfig:
+    """资源管理配置"""
+    enable_resource_management: bool = True
+    auto_cleanup_threshold: float = 85.0
+    monitoring_interval: float = 10.0
+    enable_auto_cleanup: bool = True
+    enable_lazy_loading: bool = False
+    memory_limit_gb: Optional[float] = None
+
+
+@dataclass
 class LoggingConfig:
     """日志配置"""
     level: str = "INFO"
@@ -74,19 +112,21 @@ class Config:
     def __init__(self, config_path: Optional[str] = None):
         """
         初始化配置管理器
-        
+
         Args:
             config_path: 配置文件路径
         """
         self.config_path = config_path or self._get_default_config_path()
-        
+
         # 配置对象
         self.model = ModelConfig()
         self.vectordb = VectorDBConfig()
         self.rag = RAGConfig()
         self.generation = GenerationConfig()
+        self.security = SecurityConfig()
+        self.resource = ResourceConfig()
         self.logging = LoggingConfig()
-        
+
         # 加载配置
         self.load_config()
     
@@ -135,7 +175,7 @@ class Config:
     def _update_from_dict(self, config_data: Dict[str, Any]) -> None:
         """
         从字典更新配置
-        
+
         Args:
             config_data: 配置数据字典
         """
@@ -145,28 +185,42 @@ class Config:
             for key, value in model_data.items():
                 if hasattr(self.model, key):
                     setattr(self.model, key, value)
-        
+
         # 更新向量数据库配置
         if "vectordb" in config_data:
             vectordb_data = config_data["vectordb"]
             for key, value in vectordb_data.items():
                 if hasattr(self.vectordb, key):
                     setattr(self.vectordb, key, value)
-        
+
         # 更新RAG配置
         if "rag" in config_data:
             rag_data = config_data["rag"]
             for key, value in rag_data.items():
                 if hasattr(self.rag, key):
                     setattr(self.rag, key, value)
-        
+
         # 更新生成配置
         if "generation" in config_data:
             generation_data = config_data["generation"]
             for key, value in generation_data.items():
                 if hasattr(self.generation, key):
                     setattr(self.generation, key, value)
-        
+
+        # 更新安全配置
+        if "security" in config_data:
+            security_data = config_data["security"]
+            for key, value in security_data.items():
+                if hasattr(self.security, key):
+                    setattr(self.security, key, value)
+
+        # 更新资源配置
+        if "resource" in config_data:
+            resource_data = config_data["resource"]
+            for key, value in resource_data.items():
+                if hasattr(self.resource, key):
+                    setattr(self.resource, key, value)
+
         # 更新日志配置
         if "logging" in config_data:
             logging_data = config_data["logging"]
@@ -189,6 +243,8 @@ class Config:
                 "vectordb": asdict(self.vectordb),
                 "rag": asdict(self.rag),
                 "generation": asdict(self.generation),
+                "security": asdict(self.security),
+                "resource": asdict(self.resource),
                 "logging": asdict(self.logging)
             }
             
@@ -227,7 +283,7 @@ class Config:
     def get_config_dict(self) -> Dict[str, Any]:
         """
         获取完整配置字典
-        
+
         Returns:
             配置字典
         """
@@ -236,6 +292,8 @@ class Config:
             "vectordb": asdict(self.vectordb),
             "rag": asdict(self.rag),
             "generation": asdict(self.generation),
+            "security": asdict(self.security),
+            "resource": asdict(self.resource),
             "logging": asdict(self.logging)
         }
     
